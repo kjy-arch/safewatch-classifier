@@ -1,10 +1,9 @@
 import json
-import google.generativeai as genai
+from google import genai
 from app.core.config import settings
 from app.core.database import supabase
 
-genai.configure(api_key=settings.GEMINI_API_KEY)
-model = genai.GenerativeModel("gemini-2.0-flash-lite")
+client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
 SYSTEM_PROMPT = """당신은 병무청 언론 분류 전문가입니다.
 주어진 텍스트를 분석하여 아래 항목을 JSON 형식으로 반환하세요.
@@ -78,7 +77,11 @@ def _analyze_single(text: str, source_type: str) -> dict:
     }.get(source_type, "텍스트")
 
     prompt = f"{SYSTEM_PROMPT}\n\n출처: {source_label}\n텍스트: {text}"
-    response = model.generate_content(prompt)
+
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=prompt,
+    )
     raw = response.text.strip()
 
     if raw.startswith("```"):
