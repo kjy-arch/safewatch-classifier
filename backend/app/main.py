@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.health import router as health_router
 from app.api.departments import router as departments_router
 from app.api.upload import router as upload_router
+from app.api.docs import router as docs_router
 
 app = FastAPI(
     title="SafeWatch Classifier API",
@@ -21,3 +22,4 @@ app.add_middleware(
 app.include_router(health_router, prefix="/api")
 app.include_router(departments_router, prefix="/api")
 app.include_router(upload_router, prefix="/api")
+app.include_router(docs_router, prefix="/api")

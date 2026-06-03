@@ -2,6 +2,7 @@ import json
 from google import genai
 from app.core.config import settings
 from app.core.database import supabase
+from app.services.doc_service import find_relevant_docs
 
 client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
@@ -76,7 +77,13 @@ def _analyze_single(text: str, source_type: str) -> dict:
         "유튜브": "유튜브 댓글",
     }.get(source_type, "텍스트")
 
-    prompt = f"{SYSTEM_PROMPT}\n\n출처: {source_label}\n텍스트: {text}"
+    # 관련 공식 문서 검색 (있을 경우 프롬프트에 삽입)
+    relevant_docs = find_relevant_docs(text)
+    if relevant_docs:
+        doc_section = "\n\n[병무청 공식 자료 참고]\n" + "\n---\n".join(relevant_docs)
+        prompt = f"{SYSTEM_PROMPT}{doc_section}\n\n출처: {source_label}\n텍스트: {text}"
+    else:
+        prompt = f"{SYSTEM_PROMPT}\n\n출처: {source_label}\n텍스트: {text}"
 
     response = client.models.generate_content(
         model="gemini-2.5-flash",
