@@ -3,6 +3,7 @@ from fastapi.responses import StreamingResponse
 from io import BytesIO
 from app.core.database import supabase
 from app.services.excel import parse_excel, build_result_excel
+from app.services.analyzer import analyze_batch
 
 router = APIRouter(prefix="/batches", tags=["upload"])
 
@@ -47,6 +48,15 @@ async def upload_excel(file: UploadFile = File(...)):
         "total_rows": len(rows),
         "message": f"{len(rows)}행 업로드 완료. /api/batches/{batch['id']}/analyze 로 분석을 시작하세요.",
     }
+
+
+@router.post("/{batch_id}/analyze")
+def start_analyze(batch_id: str, background_tasks: BackgroundTasks):
+    batch = supabase.table("batches").select("id").eq("id", batch_id).execute().data
+    if not batch:
+        raise HTTPException(status_code=404, detail="배치를 찾을 수 없습니다.")
+    background_tasks.add_task(analyze_batch, batch_id)
+    return {"message": "분석 시작됨. 잠시 후 결과를 확인하세요.", "batch_id": batch_id}
 
 
 @router.get("")
