@@ -45,13 +45,15 @@ def build_result_excel(original_rows: List[Dict], analysis_results: List[Dict]) 
     records = []
     for row, result in zip(original_rows, analysis_results):
         records.append({
-            "원문": row["text"],
-            "출처": row["source_type"],
-            "URL": row.get("source_url", ""),
+            "원문":           row["text"],
+            "출처":           row["source_type"],
+            "URL":            row.get("source_url", ""),
             "거짓점수(0-100)": result.get("false_score", ""),
-            "거짓척도": result.get("false_level", ""),
-            "판단이유": result.get("false_reason", ""),
-            "연관부서": result.get("department", ""),
+            "거짓척도":        result.get("false_level", ""),
+            "판단이유":        result.get("false_reason", ""),
+            "의도유형":        result.get("intent_type", ""),
+            "내용유형":        result.get("content_type", ""),
+            "연관부서":        result.get("department", ""),
         })
 
     df = pd.DataFrame(records)

@@ -6,39 +6,40 @@ from app.services.doc_service import find_relevant_docs
 
 client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
-SYSTEM_PROMPT = """당신은 병무청 언론 분류 전문가입니다.
-주어진 텍스트를 분석하여 아래 항목을 JSON 형식으로 반환하세요.
+SYSTEM_PROMPT = """당신은 병무청 언론 모니터링 전문 분석관입니다.
+주어진 텍스트를 아래 4가지 기준으로 분석하여 반드시 JSON만 반환하세요.
 
-반환 형식 (반드시 이 JSON만 반환):
+반환 형식:
 {
-  "false_score": 0~100 사이의 정수 (0=완전한 사실, 100=완전한 거짓),
+  "false_score": 0~100 정수 (0=완전한 사실, 100=완전한 거짓/허위),
   "false_level": "낮음" | "중간" | "높음",
-  "false_reason": 판단 이유 한 줄 (30자 이내),
-  "department_keyword": 연관 부서를 나타내는 핵심 키워드 하나
+  "false_reason": 거짓 여부 판단 이유 한 줄 (40자 이내),
+  "intent_type": 아래 중 하나,
+  "content_type": 아래 중 하나,
+  "department_name": 아래 부서 목록 중 가장 관련 있는 부서명 (없으면 null)
 }
 
-판단 기준:
-- false_score 0~33 → false_level: 낮음
-- false_score 34~66 → false_level: 중간
-- false_score 67~100 → false_level: 높음
-- 병무청에 불리하거나 허위일 가능성이 높을수록 점수를 높게 부여
-- department_keyword는 텍스트에서 추출한 핵심 업무 키워드 (예: 신체검사, 사회복무, 입영 등)"""
+[의도 유형 - intent_type]
+- "악의적 유포": 허위 사실을 의도적으로 퍼뜨리는 경우
+- "단순 오해": 사실을 잘못 이해하거나 잘못 전달한 경우
+- "풍자/비판": 과장이나 풍자를 통한 비판적 표현
+- "사실 보도": 실제 사실에 근거한 보도나 제보
+- "불명확": 의도를 파악하기 어려운 경우
 
+[내용 유형 - content_type]
+- "사실관계 오류": 구체적인 사실이 틀린 경우
+- "과장/왜곡": 사실을 부풀리거나 맥락을 왜곡한 경우
+- "출처 불명": 근거나 출처가 없는 주장
+- "맥락 누락": 일부 사실만 발췌하여 전체 맥락을 흐리는 경우
+- "문제없음": 내용상 허위나 왜곡이 없는 경우
 
-def _match_department(keyword: str, departments: list) -> str | None:
-    """키워드를 부서 keywords 배열과 매칭하여 부서 ID 반환."""
-    if not keyword:
-        return None
-    keyword_lower = keyword.lower()
-    for dept in departments:
-        for kw in dept.get("keywords", []):
-            if kw in keyword_lower or keyword_lower in kw:
-                return dept["id"]
-    return None
+[거짓점수 기준]
+- 0~33: false_level = "낮음" (사실에 가까움)
+- 34~66: false_level = "중간" (사실 여부 불분명)
+- 67~100: false_level = "높음" (허위 가능성 높음)"""
 
 
 def analyze_batch(batch_id: str):
-    """배치 내 모든 articles를 Gemini로 분석하고 결과를 Supabase에 저장."""
     articles = (
         supabase.table("articles")
         .select("id, original_text, source_type")
@@ -51,13 +52,19 @@ def analyze_batch(batch_id: str):
     analyzed = 0
     for article in articles:
         try:
-            result = _analyze_single(article["original_text"], article["source_type"])
-            dept_id = _match_department(result.get("department_keyword", ""), departments)
+            result = _analyze_single(
+                article["original_text"],
+                article["source_type"],
+                departments,
+            )
+            dept_id = _find_dept_id(result.get("department_name"), departments)
 
             supabase.table("articles").update({
-                "false_score": result["false_score"],
-                "false_level": result["false_level"],
+                "false_score":  result["false_score"],
+                "false_level":  result["false_level"],
                 "false_reason": result["false_reason"],
+                "intent_type":  result["intent_type"],
+                "content_type": result["content_type"],
                 "department_id": dept_id,
             }).eq("id", article["id"]).execute()
 
@@ -69,7 +76,20 @@ def analyze_batch(batch_id: str):
     return {"analyzed": analyzed, "total": len(articles)}
 
 
-def _analyze_single(text: str, source_type: str) -> dict:
+def _find_dept_id(dept_name: str | None, departments: list) -> str | None:
+    if not dept_name:
+        return None
+    for d in departments:
+        if d["name"] == dept_name:
+            return d["id"]
+    # 정확히 일치하지 않으면 부분 일치 시도
+    for d in departments:
+        if dept_name in d["name"] or d["name"] in dept_name:
+            return d["id"]
+    return None
+
+
+def _analyze_single(text: str, source_type: str, departments: list) -> dict:
     source_label = {
         "언론": "언론 기사",
         "SNS": "SNS 게시물",
@@ -77,13 +97,20 @@ def _analyze_single(text: str, source_type: str) -> dict:
         "유튜브": "유튜브 댓글",
     }.get(source_type, "텍스트")
 
-    # 관련 공식 문서 검색 (있을 경우 프롬프트에 삽입)
+    dept_list = "\n".join(f"- {d['name']}" for d in departments)
+
     relevant_docs = find_relevant_docs(text)
+    doc_section = ""
     if relevant_docs:
         doc_section = "\n\n[병무청 공식 자료 참고]\n" + "\n---\n".join(relevant_docs)
-        prompt = f"{SYSTEM_PROMPT}{doc_section}\n\n출처: {source_label}\n텍스트: {text}"
-    else:
-        prompt = f"{SYSTEM_PROMPT}\n\n출처: {source_label}\n텍스트: {text}"
+
+    prompt = (
+        f"{SYSTEM_PROMPT}\n\n"
+        f"[분류 가능한 부서 목록]\n{dept_list}"
+        f"{doc_section}\n\n"
+        f"출처: {source_label}\n"
+        f"텍스트: {text}"
+    )
 
     response = client.models.generate_content(
         model="gemini-2.5-flash",
@@ -98,8 +125,7 @@ def _analyze_single(text: str, source_type: str) -> dict:
     raw = raw.strip()
 
     data = json.loads(raw)
-    score = int(data.get("false_score", 50))
-    score = max(0, min(100, score))
+    score = max(0, min(100, int(data.get("false_score", 50))))
 
     if score <= 33:
         level = "낮음"
@@ -109,8 +135,10 @@ def _analyze_single(text: str, source_type: str) -> dict:
         level = "높음"
 
     return {
-        "false_score": score,
-        "false_level": level,
-        "false_reason": str(data.get("false_reason", ""))[:100],
-        "department_keyword": str(data.get("department_keyword", "")),
+        "false_score":     score,
+        "false_level":     level,
+        "false_reason":    str(data.get("false_reason", ""))[:100],
+        "intent_type":     str(data.get("intent_type", "불명확")),
+        "content_type":    str(data.get("content_type", "불명확")),
+        "department_name": data.get("department_name"),
     }

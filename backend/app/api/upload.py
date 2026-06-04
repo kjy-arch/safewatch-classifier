@@ -87,10 +87,12 @@ def download_result(batch_id: str):
     original_rows = [{"text": a["original_text"], "source_type": a["source_type"], "source_url": a.get("source_url", "")} for a in articles]
     analysis_results = [
         {
-            "false_score": a.get("false_score"),
-            "false_level": a.get("false_level"),
+            "false_score":  a.get("false_score"),
+            "false_level":  a.get("false_level"),
             "false_reason": a.get("false_reason"),
-            "department": a.get("departments", {}).get("name", "") if a.get("departments") else "",
+            "intent_type":  a.get("intent_type", ""),
+            "content_type": a.get("content_type", ""),
+            "department":   a.get("departments", {}).get("name", "") if a.get("departments") else "",
         }
         for a in articles
     ]
