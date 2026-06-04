@@ -6,33 +6,62 @@ from typing import List, Dict, Any
 
 VALID_SOURCE_TYPES = {"언론", "SNS", "커뮤니티", "유튜브"}
 
+# 컬럼명 자동 인식 매핑 (한글/영문 모두 지원)
+TEXT_ALIASES = {
+    "text", "내용", "텍스트", "본문", "기사내용", "기사본문",
+    "게시글", "댓글", "내용물", "원문", "제목", "타이틀"
+}
+SOURCE_TYPE_ALIASES = {
+    "source_type", "출처", "출처유형", "유형", "구분", "type", "분류"
+}
+SOURCE_URL_ALIASES = {
+    "source_url", "url", "링크", "주소", "출처링크", "기사링크", "원문링크"
+}
+
+
+def _find_col(columns, aliases):
+    """컬럼명 목록에서 aliases 중 일치하는 첫 번째 컬럼명 반환."""
+    cols_lower = {c.strip().lower(): c for c in columns}
+    for alias in aliases:
+        if alias.lower() in cols_lower:
+            return cols_lower[alias.lower()]
+    return None
+
 
 def parse_excel(file_bytes: bytes) -> List[Dict[str, Any]]:
-    """
-    엑셀 파일을 파싱하여 행 목록으로 반환.
-    필수 컬럼: text (원문 텍스트)
-    선택 컬럼: source_type, source_url
-    """
     df = pd.read_excel(BytesIO(file_bytes), dtype=str)
     df = df.fillna("")
 
-    if "text" not in df.columns:
-        raise ValueError("엑셀 파일에 'text' 컬럼이 필요합니다.")
+    cols = list(df.columns)
+
+    # 컬럼명 자동 인식
+    text_col = _find_col(cols, TEXT_ALIASES)
+    source_type_col = _find_col(cols, SOURCE_TYPE_ALIASES)
+    source_url_col = _find_col(cols, SOURCE_URL_ALIASES)
+
+    # 인식된 컬럼이 없으면 순서 기반으로 처리 (첫 번째 컬럼 = 원문)
+    if not text_col:
+        text_col = cols[0] if cols else None
+
+    if not text_col:
+        raise ValueError("엑셀에서 텍스트 컬럼을 찾을 수 없습니다.")
 
     rows = []
     for _, row in df.iterrows():
-        text = str(row.get("text", "")).strip()
-        if not text:
+        text = str(row[text_col]).strip()
+        if not text or text == "nan":
             continue
 
-        source_type = str(row.get("source_type", "언론")).strip()
+        source_type = str(row[source_type_col]).strip() if source_type_col else "언론"
         if source_type not in VALID_SOURCE_TYPES:
             source_type = "언론"
+
+        source_url = str(row[source_url_col]).strip() if source_url_col else ""
 
         rows.append({
             "text": text,
             "source_type": source_type,
-            "source_url": str(row.get("source_url", "")).strip(),
+            "source_url": source_url,
         })
 
     return rows

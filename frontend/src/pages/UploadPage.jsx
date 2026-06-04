@@ -41,9 +41,7 @@ export default function UploadPage({ onComplete }) {
       <div className="bg-white rounded-xl shadow p-8">
         <h2 className="text-2xl font-bold text-gray-800 mb-2">엑셀 업로드</h2>
         <p className="text-gray-500 text-sm mb-6">
-          분석할 텍스트가 담긴 엑셀 파일을 업로드하세요.<br />
-          <span className="font-medium text-gray-600">필수 컬럼:</span> <code className="bg-gray-100 px-1 rounded">text</code> &nbsp;
-          <span className="font-medium text-gray-600">선택 컬럼:</span> <code className="bg-gray-100 px-1 rounded">source_type</code>, <code className="bg-gray-100 px-1 rounded">source_url</code>
+          분석할 텍스트가 담긴 엑셀 파일을 업로드하세요.
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -93,9 +91,11 @@ export default function UploadPage({ onComplete }) {
           </button>
         </form>
 
-        <div className="mt-6 bg-gray-50 rounded-lg p-4 text-xs text-gray-500">
-          <p className="font-medium text-gray-600 mb-1">source_type 값 (선택)</p>
-          <p>언론 · SNS · 커뮤니티 · 유튜브 (없으면 자동으로 "언론")</p>
+        <div className="mt-6 bg-gray-50 rounded-lg p-4 text-xs text-gray-500 space-y-2">
+          <p className="font-medium text-gray-600">엑셀 형식 안내</p>
+          <p>• <span className="font-medium text-gray-600">컬럼명 자유</span> — 기존 엑셀 그대로 사용 가능. 내용·텍스트·본문·기사내용 등 자동 인식</p>
+          <p>• <span className="font-medium text-gray-600">컬럼명 없어도 OK</span> — 첫 번째 열을 원문으로 자동 처리</p>
+          <p>• <span className="font-medium text-gray-600">출처 구분값</span> — 언론 · SNS · 커뮤니티 · 유튜브 (없거나 다른 값이면 "언론"으로 처리)</p>
         </div>
       </div>
     </div>
